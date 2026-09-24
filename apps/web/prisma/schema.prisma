@@ -1,0 +1,289 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
+}
+
+enum UserRole {
+  SUPER_ADMIN
+  COMPANY_ADMIN
+  HR_PRACTITIONER
+  MANAGER
+  EMPLOYEE
+}
+
+enum MembershipStatus { ACTIVE INVITED SUSPENDED }
+enum EmploymentType { PERMANENT CONTRACT TEMPORARY INTERN CONSULTANT PART_TIME }
+enum LeaveStatus { PENDING APPROVED REJECTED CANCELLED }
+enum ApplicationStatus { APPLIED SCREENING SHORTLISTED INTERVIEW ASSESSMENT OFFER HIRED REJECTED }
+enum GoalStatus { NOT_STARTED IN_PROGRESS COMPLETED OVERDUE }
+
+model User {
+  id            String    @id @default(cuid())
+  name          String?
+  email         String?   @unique
+  emailVerified DateTime?
+  image         String?
+  passwordHash  String?
+  accounts      Account[]
+  sessions      Session[]
+  memberships   Membership[]
+  employee      Employee?
+  auditLogs     AuditLog[]
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+}
+
+model Account {
+  id                String  @id @default(cuid())
+  userId            String
+  type              String
+  provider          String
+  providerAccountId String
+  refresh_token     String? @db.Text
+  access_token      String? @db.Text
+  expires_at        Int?
+  token_type        String?
+  scope             String?
+  id_token          String? @db.Text
+  session_state     String?
+  user              User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  @@unique([provider, providerAccountId])
+}
+
+model Session {
+  id           String   @id @default(cuid())
+  sessionToken String   @unique
+  userId       String
+  expires      DateTime
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model VerificationToken {
+  identifier String
+  token      String   @unique
+  expires    DateTime
+  @@unique([identifier, token])
+}
+
+model Organization {
+  id             String       @id @default(cuid())
+  name           String
+  slug           String       @unique
+  registrationNo String?
+  tpin           String?
+  industry       String?
+  province       String?
+  city           String?
+  logoUrl        String?
+  memberships    Membership[]
+  employees      Employee[]
+  departments    Department[]
+  branches       Branch[]
+  skills         Skill[]
+  jobs           JobPosting[]
+  trainings      TrainingCourse[]
+  auditLogs      AuditLog[]
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+}
+
+model Membership {
+  id             String           @id @default(cuid())
+  userId         String
+  organizationId String
+  role           UserRole
+  status         MembershipStatus @default(ACTIVE)
+  user           User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  organization   Organization     @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  @@unique([userId, organizationId])
+  @@index([organizationId, status])
+}
+
+model Branch {
+  id             String       @id @default(cuid())
+  name           String
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  employees      Employee[]
+  createdAt      DateTime     @default(now())
+  @@unique([organizationId, name])
+}
+
+model Department {
+  id             String       @id @default(cuid())
+  name           String
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  employees      Employee[]
+  createdAt      DateTime     @default(now())
+  @@unique([organizationId, name])
+}
+
+model Employee {
+  id             String         @id @default(cuid())
+  employeeNumber String
+  firstName      String
+  lastName       String
+  email          String?
+  phone          String?
+  dateOfBirth    DateTime?
+  address        String?
+  jobTitle       String?
+  employmentType EmploymentType @default(PERMANENT)
+  startDate      DateTime
+  contractEnd    DateTime?
+  organizationId String
+  departmentId   String?
+  branchId       String?
+  managerId      String?
+  userId         String?        @unique
+  organization   Organization   @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  department     Department?    @relation(fields: [departmentId], references: [id])
+  branch         Branch?        @relation(fields: [branchId], references: [id])
+  manager        Employee?      @relation("EmployeeManager", fields: [managerId], references: [id])
+  directReports  Employee[]     @relation("EmployeeManager")
+  user           User?          @relation(fields: [userId], references: [id])
+  skills         EmployeeSkill[]
+  goals          Goal[]
+  leaveRequests  LeaveRequest[]
+  attendance     Attendance[]
+  trainingRecords TrainingRecord[]
+  createdAt      DateTime       @default(now())
+  updatedAt      DateTime       @updatedAt
+  @@unique([organizationId, employeeNumber])
+  @@index([organizationId, lastName])
+}
+
+model Skill {
+  id             String          @id @default(cuid())
+  name           String
+  category       String
+  organizationId String?
+  organization   Organization?   @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  employees      EmployeeSkill[]
+  @@unique([organizationId, name])
+}
+
+model EmployeeSkill {
+  id         String   @id @default(cuid())
+  employeeId String
+  skillId    String
+  level      Int      @default(1)
+  evidence   String?
+  verified   Boolean  @default(false)
+  employee   Employee @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  skill      Skill    @relation(fields: [skillId], references: [id], onDelete: Cascade)
+  @@unique([employeeId, skillId])
+}
+
+model Goal {
+  id          String     @id @default(cuid())
+  employeeId  String
+  title       String
+  description String?
+  target      String?
+  dueDate     DateTime?
+  progress    Int        @default(0)
+  status      GoalStatus @default(NOT_STARTED)
+  employee    Employee   @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  createdAt   DateTime   @default(now())
+  updatedAt   DateTime   @updatedAt
+}
+
+model LeaveRequest {
+  id         String      @id @default(cuid())
+  employeeId String
+  type       String
+  startDate  DateTime
+  endDate    DateTime
+  days       Float
+  reason     String?
+  status     LeaveStatus @default(PENDING)
+  approvedBy String?
+  approvedAt DateTime?
+  employee   Employee    @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  createdAt  DateTime    @default(now())
+  @@index([employeeId, status])
+}
+
+model Attendance {
+  id         String   @id @default(cuid())
+  employeeId String
+  date       DateTime
+  clockIn    DateTime?
+  clockOut   DateTime?
+  hours      Float?
+  status     String?
+  employee   Employee @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  @@unique([employeeId, date])
+}
+
+model TrainingCourse {
+  id            String       @id @default(cuid())
+  organizationId String
+  title         String
+  description   String?
+  provider      String?
+  durationHours Float?
+  cpdHours      Float?
+  organization  Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  records       TrainingRecord[]
+}
+
+model TrainingRecord {
+  id             String         @id @default(cuid())
+  employeeId     String
+  courseId       String
+  completedAt    DateTime?
+  certificateUrl String?
+  status         String         @default("ENROLLED")
+  employee       Employee       @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  course         TrainingCourse @relation(fields: [courseId], references: [id], onDelete: Cascade)
+}
+
+model JobPosting {
+  id             String       @id @default(cuid())
+  organizationId String
+  title          String
+  description    String
+  location       String?
+  status         String       @default("OPEN")
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  applications   Application[]
+  createdAt      DateTime     @default(now())
+}
+
+model Application {
+  id        String            @id @default(cuid())
+  jobId     String
+  firstName String
+  lastName  String
+  email     String
+  phone     String?
+  cvUrl     String?
+  status    ApplicationStatus @default(APPLIED)
+  job       JobPosting        @relation(fields: [jobId], references: [id], onDelete: Cascade)
+  createdAt DateTime          @default(now())
+}
+
+model AuditLog {
+  id             String       @id @default(cuid())
+  organizationId String?
+  userId         String?
+  action         String
+  entity         String
+  entityId       String?
+  ipAddress      String?
+  userAgent      String?
+  metadata       Json?
+  organization   Organization? @relation(fields: [organizationId], references: [id], onDelete: SetNull)
+  user           User?         @relation(fields: [userId], references: [id], onDelete: SetNull)
+  createdAt      DateTime     @default(now())
+  @@index([organizationId, createdAt])
+  @@index([userId, createdAt])
+}

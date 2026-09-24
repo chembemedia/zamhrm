@@ -2,40 +2,51 @@
 
 Human Capital Intelligence Platform for Zambian Organisations.
 
-This repository contains the first MVP foundation for ZamConnect People: a Next.js web dashboard, FastAPI API, and PostgreSQL data layer.
+## Production web stack
 
-## MVP foundation
+The Vercel application lives in `apps/web` and now includes:
 
-- Multi-tenant company, branch, department, and team structure
-- Role-aware application shell for Super Admin, Company Admin, HR Practitioner, Manager, and Employee
-- Employee digital profiles
-- Skill DNA and workforce intelligence summary
-- FastAPI health and dashboard endpoints
-- PostgreSQL schema with audit log foundation
-- Docker Compose development environment
+- Next.js App Router + TypeScript + Tailwind CSS
+- Prisma PostgreSQL schema for organisations, memberships, employees, skills, training, leave, attendance, recruitment and audit logs
+- Auth.js credentials authentication with database sessions
+- Organisation-scoped dashboard API and middleware-protected routes
+- Seed data for a local Zambia HQ workspace
 
-## Run locally
+## Local development
+
+1. Start PostgreSQL with the existing Docker Compose setup or use a hosted PostgreSQL database.
+2. Configure the web environment:
 
 ```bash
-docker compose up --build
+cd apps/web
+cp .env.example .env.local
+npm install
+npx prisma db push
+npm run db:seed
+npm run dev
 ```
 
-- Web: http://localhost:3000
-- API: http://localhost:8000/docs
-- API health: http://localhost:8000/health
+Open `http://localhost:3000` and sign in with the values in `SEED_ADMIN_EMAIL` and `SEED_ADMIN_PASSWORD`. Change the seed password before using a shared environment.
 
-To run without Docker, start PostgreSQL and set `DATABASE_URL`, then run the API from `apps/api` and the web app from `apps/web`.
+## Vercel deployment
 
-## Environment
+Set the Vercel project root to `apps/web` (or configure the monorepo root directory), then add:
 
-Copy `.env.example` to `.env`. The example values are for local development only. Do not commit credentials.
+- `DATABASE_URL`: pooled PostgreSQL connection string for runtime traffic
+- `DIRECT_URL`: direct PostgreSQL connection string for Prisma migrations
+- `NEXTAUTH_SECRET`: long random production secret
+- `NEXTAUTH_URL`: production deployment URL
+- `SEED_ADMIN_EMAIL` and `SEED_ADMIN_PASSWORD`: only for the initial controlled seed
 
-## Project structure
+Recommended deployment commands:
 
-```text
-apps/web        Next.js dashboard
-apps/api        FastAPI service
-infra           PostgreSQL initialization
+```bash
+npx prisma migrate deploy
+npm run build
 ```
 
-The API currently uses SQLAlchemy's `create_all` for the initial MVP foundation. Add Alembic migrations before production deployment.
+For a new database, create and commit a migration locally with `npx prisma migrate dev --name init`, then use `prisma migrate deploy` in CI/Vercel. Do not run `prisma migrate dev` in a production build.
+
+## Security notes
+
+Every dashboard query resolves the authenticated user's active organisation before querying tenant data. Keep secrets out of `NEXT_PUBLIC_*` variables, use a pooled runtime connection, enable database backups, and review retention/access policies before production HR data is loaded.
